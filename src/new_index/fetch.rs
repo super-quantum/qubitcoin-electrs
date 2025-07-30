@@ -2,6 +2,7 @@ use rayon::prelude::*;
 
 #[cfg(feature = "liquid")]
 use crate::elements::ebcompact::*;
+use crate::util::qhash::QHashable;
 #[cfg(not(feature = "liquid"))]
 use bitcoin::consensus::encode::{deserialize, Decodable};
 #[cfg(feature = "liquid")]
@@ -127,7 +128,7 @@ fn blkfiles_fetcher(
                 let block_entries: Vec<BlockEntry> = sizedblocks
                     .into_iter()
                     .filter_map(|(block, size)| {
-                        let blockhash = block.block_hash();
+                        let blockhash = block.qhash();
                         entry_map
                             .remove(&blockhash)
                             .map(|entry| BlockEntry { block, entry, size })

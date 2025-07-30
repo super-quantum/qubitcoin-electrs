@@ -1,7 +1,9 @@
 use crate::chain::{BlockHash, BlockHeader};
 use crate::errors::*;
 use crate::new_index::BlockEntry;
+use crate::util::qhash::QHashable;
 
+use indicatif::ProgressIterator;
 use std::collections::HashMap;
 use std::fmt;
 use std::iter::FromIterator;
@@ -110,7 +112,7 @@ impl HeaderList {
                 panic!(
                     "missing expected blockhash in headers map: {:?}, pointed from: {:?}",
                     blockhash,
-                    headers_chain.last().map(|h| h.block_hash())
+                    headers_chain.last().map(|h| h.qhash())
                 )
             });
             blockhash = header.prev_blockhash;
@@ -135,11 +137,15 @@ impl HeaderList {
             blockhash: BlockHash,
             header: BlockHeader,
         }
-        let hashed_headers =
-            Vec::<HashedHeader>::from_iter(new_headers.into_iter().map(|header| HashedHeader {
-                blockhash: header.block_hash(),
-                header,
-            }));
+        let hashed_headers = Vec::<HashedHeader>::from_iter(
+            new_headers
+                .into_iter()
+                .map(|header| HashedHeader {
+                    blockhash: header.qhash(),
+                    header,
+                })
+                .progress(),
+        );
         for i in 1..hashed_headers.len() {
             assert_eq!(
                 hashed_headers[i].header.prev_blockhash,

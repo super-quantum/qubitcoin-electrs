@@ -7,8 +7,8 @@ use crate::errors;
 use crate::new_index::{compute_script_hash, Query, SpendingInput, Utxo};
 use crate::util::{
     create_socket, electrum_merkle, extract_tx_prevouts, get_innerscripts, get_tx_fee, has_prevout,
-    is_coinbase, BlockHeaderMeta, BlockId, FullHash, ScriptToAddr, ScriptToAsm, TransactionStatus,
-    DEFAULT_BLOCKHASH,
+    is_coinbase, qhash::QHashable, BlockHeaderMeta, BlockId, FullHash, ScriptToAddr, ScriptToAsm,
+    TransactionStatus, DEFAULT_BLOCKHASH,
 };
 
 #[cfg(not(feature = "liquid"))]
@@ -84,7 +84,7 @@ impl BlockValue {
     fn new(blockhm: BlockHeaderMeta) -> Self {
         let header = blockhm.header_entry.header();
         BlockValue {
-            id: header.block_hash(),
+            id: header.qhash(),
             height: blockhm.header_entry.height() as u32,
             #[cfg(not(feature = "liquid"))]
             version: header.version.to_consensus() as u32,
@@ -934,9 +934,7 @@ fn handle_request(
                 HttpError::not_found("Transaction not found or is unconfirmed".to_string())
             })?;
 
-            let height = query
-                .chain()
-                .height_by_hash(&merkleblock.header.block_hash());
+            let height = query.chain().height_by_hash(&merkleblock.header.qhash());
 
             http_message(
                 StatusCode::OK,

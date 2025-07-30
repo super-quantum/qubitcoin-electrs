@@ -12,6 +12,7 @@ use std::{env, fs, io};
 use base64::prelude::{Engine, BASE64_STANDARD};
 use error_chain::ChainedError;
 use hex::FromHex;
+use indicatif::ProgressBar;
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use serde_json::{from_str, from_value, Value};
 
@@ -24,6 +25,8 @@ use crate::chain::{Block, BlockHash, BlockHeader, Network, Transaction, Txid};
 use crate::metrics::{HistogramOpts, HistogramVec, Metrics};
 use crate::signal::Waiter;
 use crate::util::{HeaderList, DEFAULT_BLOCKHASH};
+
+use crate::util::qhash::QHashable;
 
 use crate::errors::*;
 
@@ -538,7 +541,7 @@ impl Daemon {
     pub fn getblock(&self, blockhash: &BlockHash) -> Result<Block> {
         let block =
             block_from_value(self.request("getblock", json!([blockhash, /*verbose=*/ false]))?)?;
-        assert_eq!(block.block_hash(), *blockhash);
+        assert_eq!(block.qhash(), *blockhash);
         Ok(block)
     }
 
@@ -691,11 +694,14 @@ impl Daemon {
             result.append(&mut headers);
         }
 
+        let pb = ProgressBar::new(result.len() as u64);
         let mut blockhash = *DEFAULT_BLOCKHASH;
         for header in &result {
             assert_eq!(header.prev_blockhash, blockhash);
-            blockhash = header.block_hash();
+            blockhash = header.qhash();
+            pb.inc(1);
         }
+        pb.finish();
         assert_eq!(blockhash, *tip);
         Ok(result)
     }

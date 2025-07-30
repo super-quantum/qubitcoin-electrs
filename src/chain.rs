@@ -5,6 +5,8 @@ pub use bitcoin::{
     Transaction, TxIn, TxOut, Txid,
 };
 
+use crate::util::qhash::QHashable;
+
 #[cfg(feature = "liquid")]
 pub use {
     crate::elements::asset,
@@ -119,14 +121,10 @@ pub fn genesis_hash(network: Network) -> BlockHash {
 
 pub fn bitcoin_genesis_hash(network: BNetwork) -> bitcoin::BlockHash {
     lazy_static! {
-        static ref BITCOIN_GENESIS: bitcoin::BlockHash =
-            genesis_block(BNetwork::Bitcoin).block_hash();
-        static ref TESTNET_GENESIS: bitcoin::BlockHash =
-            genesis_block(BNetwork::Testnet).block_hash();
-        static ref REGTEST_GENESIS: bitcoin::BlockHash =
-            genesis_block(BNetwork::Regtest).block_hash();
-        static ref SIGNET_GENESIS: bitcoin::BlockHash =
-            genesis_block(BNetwork::Signet).block_hash();
+        static ref BITCOIN_GENESIS: bitcoin::BlockHash = genesis_block(BNetwork::Bitcoin).qhash();
+        static ref TESTNET_GENESIS: bitcoin::BlockHash = genesis_block(BNetwork::Testnet).qhash();
+        static ref REGTEST_GENESIS: bitcoin::BlockHash = genesis_block(BNetwork::Regtest).qhash();
+        static ref SIGNET_GENESIS: bitcoin::BlockHash = genesis_block(BNetwork::Signet).qhash();
     }
     match network {
         BNetwork::Bitcoin => *BITCOIN_GENESIS,
