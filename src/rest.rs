@@ -579,6 +579,25 @@ impl Handle {
     }
 }
 
+fn calculate_bitcoin_supply(height: usize) -> u64 {
+    const HALVING_INTERVAL: usize = 210_000;
+    const INITIAL_REWARD: u64 = 50 * 100_000_000;
+
+    let mut total_supply = 0u64;
+    let mut current_height = 0usize;
+    let mut current_reward = INITIAL_REWARD;
+
+    while current_height <= height && current_reward > 0 {
+        let blocks_in_this_era = std::cmp::min(HALVING_INTERVAL, height + 1 - current_height);
+        total_supply += blocks_in_this_era as u64 * current_reward;
+
+        current_height += blocks_in_this_era;
+        current_reward /= 2;
+    }
+
+    total_supply
+}
+
 fn handle_request(
     method: Method,
     uri: hyper::Uri,
@@ -1005,6 +1024,13 @@ fn handle_request(
 
         (&Method::GET, Some(&"fee-estimates"), None, None, None, None) => {
             json_response(query.estimate_fee_map(), TTL_SHORT)
+        }
+
+        (&Method::GET, Some(&"supply"), None, None, None, None) => {
+            let height = query.chain().best_height();
+            let supply_satoshis = calculate_bitcoin_supply(height);
+            let supply_btc = supply_satoshis as f64 / 100_000_000.0;
+            http_message(StatusCode::OK, supply_btc.to_string(), TTL_SHORT)
         }
 
         #[cfg(feature = "liquid")]
