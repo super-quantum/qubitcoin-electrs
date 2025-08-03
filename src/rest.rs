@@ -579,6 +579,15 @@ impl Handle {
     }
 }
 
+#[derive(Serialize)]
+struct RichlistEntry {
+    rank: usize,
+    address: String,
+    balance: f64,
+    percentage: f64,
+    tx_count: usize,
+}
+
 fn calculate_bitcoin_supply(height: usize) -> u64 {
     const HALVING_INTERVAL: usize = 210_000;
     const INITIAL_REWARD: u64 = 50 * 100_000_000;
@@ -596,6 +605,76 @@ fn calculate_bitcoin_supply(height: usize) -> u64 {
     }
 
     total_supply
+}
+
+fn get_top_holders(query: &Query, limit: usize) -> Result<Vec<RichlistEntry>, HttpError> {
+    let all_scripthashes = query.chain().get_all_scripthashes()?;
+
+    let mut holders = Vec::new();
+
+    for scripthash in all_scripthashes {
+        let (chain_stats, _mempool_stats) = query.stats(&scripthash[..]);
+
+        let balance = chain_stats.funded_txo_sum.saturating_sub(chain_stats.spent_txo_sum);
+
+        if balance > 0 {
+            let address = scripthash_to_address(query, &scripthash[..], query.config().network_type)
+                .unwrap_or_else(|_| format!("scripthash:{}", scripthash.to_lower_hex_string()));
+
+            holders.push(RichlistEntry {
+                rank: 0, 
+                address,
+                balance: balance as f64 / 100_000_000.0, 
+                percentage: 0.0, 
+                tx_count: chain_stats.tx_count,
+            });
+        }
+    }
+
+    holders.sort_by(|a, b| b.balance.partial_cmp(&a.balance).unwrap());
+
+    let top_holders = holders.into_iter().take(limit).collect::<Vec<_>>();
+    
+    let current_height = query.chain().best_height();
+    let total_supply = calculate_bitcoin_supply(current_height);
+
+    let mut result = Vec::new();
+    for (i, mut holder) in top_holders.into_iter().enumerate() {
+        holder.rank = i + 1;
+        
+        let holder_balance = (holder.balance * 100_000_000.0) as u64;
+        holder.percentage = if total_supply > 0 {
+            (holder_balance as f64 / total_supply as f64) * 100.0
+        } else {
+            0.0
+        };
+            
+        result.push(holder);
+    }
+
+    Ok(result)
+}
+
+fn scripthash_to_address(query: &Query, scripthash: &[u8], network: Network) -> Result<String, HttpError> {
+    // Try to get a real address from scripthash by looking up a UTXO
+    if let Ok(utxos) = query.utxo(scripthash) {
+        if let Some(utxo) = utxos.first() {
+            // Get the transaction output to extract the script
+            let outpoint = OutPoint::from(utxo);
+            let mut outpoints = std::collections::BTreeSet::new();
+            outpoints.insert(outpoint);
+            
+            let txos = query.lookup_txos(outpoints);
+            if let Some(txout) = txos.get(&outpoint) {
+                // Convert script to address
+                if let Some(address) = txout.script_pubkey.to_address_str(network) {
+                    return Ok(address);
+                }
+            }
+        }
+    }
+    
+    Ok(format!("scripthash:{}", scripthash.to_lower_hex_string()))
 }
 
 fn handle_request(
@@ -1031,6 +1110,16 @@ fn handle_request(
             let supply_satoshis = calculate_bitcoin_supply(height);
             let supply_btc = supply_satoshis as f64 / 100_000_000.0;
             http_message(StatusCode::OK, supply_btc.to_string(), TTL_SHORT)
+        }
+       
+        (&Method::GET, Some(&"top-holders"), None, None, None, None) => {
+            let limit = query_params.get("limit")
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(100)
+                .min(1000); 
+
+            let richlist = get_top_holders(query, limit)?;
+            json_response(richlist, TTL_SHORT)
         }
 
         #[cfg(feature = "liquid")]
