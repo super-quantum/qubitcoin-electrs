@@ -943,6 +943,35 @@ impl ChainQuery {
     pub fn asset_history_txids(&self, asset_id: &AssetId, limit: usize) -> Vec<(Txid, BlockId)> {
         self._history_txids(b'I', &asset_id.into_inner()[..], limit)
     }
+
+    pub fn get_all_scripthashes(&self) -> Result<Vec<FullHash>> {
+        let _timer = self.start_timer("get_all_scripthashes");
+        let mut iter = self.store.history_db().raw_iterator();
+        iter.seek(b"H");
+
+        let mut scripthashes = Vec::new();
+        let mut curr_scripthash = [0u8; 32];
+
+        while iter.valid() {
+            let key = iter.key().unwrap();
+
+            if !key.starts_with(b"H") {
+                break;
+            }
+
+            let entry: TxHistoryKey =
+                bincode::deserialize_big(&key).expect("failed to deserialize TxHistoryKey");
+
+            if curr_scripthash != entry.hash {
+                curr_scripthash = entry.hash;
+                scripthashes.push(entry.hash);
+            }
+
+            iter.next();
+        }
+
+        Ok(scripthashes)
+    }
 }
 
 fn load_blockhashes(db: &DB, prefix: &[u8]) -> HashSet<BlockHash> {
