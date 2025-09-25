@@ -16,7 +16,7 @@ impl QHashable for BlockHeader {
         self.consensus_encode(&mut header).unwrap();
 
         let hashed: [u8; 32] = Sha256::digest(header).into();
-        let expectations = run_simulation(&hashed);
+        let expectations = run_simulation(&hashed, self.time);
         let values = expectations
             .into_iter()
             .flat_map(|prob| I1F15::from_num(prob).to_le_bytes())
@@ -38,7 +38,7 @@ impl QHashable for Block {
 const NUM_LAYERS: usize = 2;
 const NUM_QUBITS: usize = 16;
 
-fn run_simulation(data: &[u8; 32]) -> Vec<f64> {
+fn run_simulation(data: &[u8; 32], time: u32) -> Vec<f64> {
     let mut b = LocalBuilder::<f64>::default();
     let mut r: [_; NUM_QUBITS] = core::array::from_fn(|_| Some(b.qubit()));
 
@@ -50,7 +50,10 @@ fn run_simulation(data: &[u8; 32]) -> Vec<f64> {
             } else {
                 byte_y & 0x0F
             };
-            r[i] = Some(b.ry(r[i].take().unwrap(), -(nibble_y as f64) * PI / 8.0));
+            r[i] = Some(b.ry(
+                r[i].take().unwrap(),
+                -((2 * (nibble_y as u16) + ((time >= 1758762000) as u16)) as f64) * PI / 16.0,
+            ));
 
             let byte_z = data[l * NUM_QUBITS + (NUM_QUBITS + i) / 2];
             let nibble_z = if (NUM_QUBITS + i) % 2 == 0 {
@@ -58,7 +61,10 @@ fn run_simulation(data: &[u8; 32]) -> Vec<f64> {
             } else {
                 byte_z & 0x0F
             };
-            r[i] = Some(b.rz(r[i].take().unwrap(), (nibble_z as f64) * PI / 8.0));
+            r[i] = Some(b.rz(
+                r[i].take().unwrap(),
+                ((2 * (nibble_z as u16) + ((time >= 1758762000) as u16)) as f64) * PI / 16.0,
+            ));
         }
 
         for i in 1..r.len() {
